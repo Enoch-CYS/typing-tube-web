@@ -80,14 +80,23 @@
       </div>
     </section>
 
-    <!-- 3. 곡 고르기 -->
-    <section data-screen="songs" class="screen" hidden>
+    <!-- 3. 분류 고르기 -->
+    <section data-screen="cats" class="screen" hidden>
       <div class="screen-head">
-        <h1 id="songsHello">어떤 곡으로 연습할까요?</h1>
+        <h1 id="catsHello">무엇으로 연습할까요?</h1>
         <button id="switchUserBtn" type="button" class="btn ghost">사용자 바꾸기</button>
       </div>
       <div id="cloudBar" class="cloud-bar" hidden></div>
-      <div id="catTabs" class="cat-tabs" role="tablist" aria-label="분류"></div>
+      <div id="catGrid" class="cat-grid"></div>
+      <p id="catsNote" class="note center"></p>
+    </section>
+
+    <!-- 4. 곡 고르기 -->
+    <section data-screen="songs" class="screen" hidden>
+      <div class="screen-head">
+        <h1 id="songsHello">어떤 곡으로 연습할까요?</h1>
+        <button id="backToCats" type="button" class="btn ghost">← 분류</button>
+      </div>
       <div id="songGrid" class="song-grid"></div>
       <p id="songsNote" class="note center"></p>
     </section>

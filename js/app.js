@@ -7,7 +7,7 @@
   const AVATARS = ["🦊", "🐻", "🐰", "🐼", "🐯", "🐧", "🦉", "🐢", "🐳", "🦁", "🐨", "🐥"];
   const ADMIN_MINUTES = 10; // PIN을 한 번 넣으면 10분 동안 다시 묻지 않습니다
 
-  const app = { screen: null, profile: null, adminUntil: 0, lastDone: null };
+  const app = { screen: null, profile: null, adminUntil: 0, lastDone: null, cat: null };
 
   // ── 화면 전환 ──
   function show(name) {
@@ -156,7 +156,8 @@
     if (!p) return;
     app.profile = p;
     store.saveSettings({ lastProfile: p.id });
-    goSongs();
+    app.cat = null;
+    goCats();
   }
   async function addProfileFlow() {
     // 학생으로 시작한 기기(관리자 없음)에서는 형제·자매를 PIN 없이 더할 수 있어요.
@@ -170,9 +171,64 @@
     return p;
   }
 
+  // ── 분류 고르기 ──
+  // 학생에게는 검수를 마친 곡만, 관리자에게는 준비 중인 것까지 보여 줍니다.
+  // 뺀 곡(🚫)은 학생에게 보이지 않고, 관리자에게는 맨 아래에 흐리게 남습니다.
+  function songSets(isAdmin) {
+    const all = TT.songs.list();
+    const out = (it) => TT.songs.isHidden(it.videoId);
+    const active = all.filter((it) => !out(it));
+    const published = active.filter((it) => TT.songs.isPublished(it.song));
+    const visible = isAdmin ? active.concat(all.filter(out)) : published;
+    return { all, out, active, published, visible };
+  }
+  const inCat = (id) => (it) => TT.songs.catOf(it).id === id;
+
+  function goCats() {
+    if (!app.profile) { renderProfiles(); show("profiles"); return; }
+    app.profile = store.profile(app.profile.id) || app.profile;
+    renderCats();
+    show("cats");
+  }
+  // 분류 카드: 곡 수 + 내 완주 수. 학생에게 아직 곡이 없는 분류는 「곧 열려요」로 흐리게.
+  function renderCats() {
+    const p = app.profile;
+    const isAdmin = p.role === "admin";
+    $("#catsHello").textContent = `${p.avatar} ${p.nickname} 님, 무엇으로 연습할까요?`;
+    const { active, published } = songSets(isAdmin);
+    const doneIn = (list) => list.filter((it) => { const r = store.record(p.id, it.videoId); return r && r.completed; }).length;
+    $("#catGrid").innerHTML = (TT.categories || []).map((c) => {
+      const pub = published.filter(inCat(c.id));
+      const ready = active.filter(inCat(c.id)).length - pub.length;
+      const done = doneIn(pub);
+      const soon = !isAdmin && !pub.length;
+      const meta = soon ? "곧 열려요"
+        : isAdmin ? `공개 ${pub.length}곡${ready ? ` · 준비 중 ${ready}곡` : ""}${done ? ` · 완주 ${done}곡` : ""}`
+        : `${pub.length}곡 · 완주 ${done}곡`;
+      return `
+        <button type="button" class="cat-card${soon ? " is-soon" : ""}${done && done === pub.length ? " all-done" : ""}" data-cat="${esc(c.id)}">
+          <span class="cat-icon" aria-hidden="true">${c.icon}</span>
+          <strong>${esc(c.name)}</strong>
+          <span class="cat-meta">${esc(meta)}</span>
+        </button>`;
+    }).join("");
+    $("#catsNote").textContent = isAdmin ? "관리자에게는 준비 중인 곡도 보여요. 학생에게는 검수를 마친 곡만 보여요." : "";
+    renderCloudBar();
+  }
+  function chooseCat(id) {
+    const isAdmin = app.profile && app.profile.role === "admin";
+    if (!isAdmin && !songSets(false).published.some(inCat(id))) {
+      toast("곧 열려요! 선생님(부모님)이 준비하면 여기에 나와요.");
+      return;
+    }
+    app.cat = id;
+    goSongs();
+  }
+
   // ── 곡 고르기 ──
   function goSongs() {
     if (!app.profile) { renderProfiles(); show("profiles"); return; }
+    if (!app.cat) { goCats(); return; }
     app.profile = store.profile(app.profile.id) || app.profile;
     renderSongs();
     show("songs");
@@ -199,42 +255,28 @@
   function renderSongs() {
     const p = app.profile;
     const isAdmin = p.role === "admin";
-    $("#songsHello").textContent = `${p.avatar} ${p.nickname} 님, 무엇으로 연습할까요?`;
-    // 학생에게는 검수를 마친 곡만, 관리자에게는 준비 중인 것까지 보여 줍니다.
-    // 뺀 곡(🚫)은 학생에게 보이지 않고, 관리자에게는 맨 아래에 흐리게 남습니다.
-    const all = TT.songs.list();
-    const out = (it) => TT.songs.isHidden(it.videoId);
-    const active = all.filter((it) => !out(it));
-    const visible = isAdmin
-      ? active.concat(all.filter(out))
-      : active.filter((it) => TT.songs.isPublished(it.song));
-    const cats = (TT.categories || []).filter((c) => visible.some((it) => TT.songs.catOf(it).id === c.id));
-    let cur = store.settings().songTab || "all";
-    if (cur !== "all" && !cats.some((c) => c.id === cur)) cur = "all";
-    const tab = (id, label, n) =>
-      `<button type="button" class="cat-tab${cur === id ? " on" : ""}" role="tab" aria-selected="${cur === id}" data-tab="${esc(id)}">${label} <span class="n">${n}</span></button>`;
-    $("#catTabs").innerHTML = cats.length > 1
-      ? tab("all", "전체", visible.length) + cats.map((c) => tab(c.id, `${c.icon} ${esc(c.name)}`, visible.filter((it) => TT.songs.catOf(it).id === c.id).length)).join("")
-      : "";
-    const items = cur === "all" ? visible : visible.filter((it) => TT.songs.catOf(it).id === cur);
-    renderCloudBar();
-    const hidden = active.length - visible.length; // 학생에게: 곧 열릴 곡 수(뺀 곡 제외)
+    const cat = (TT.categories || []).find((c) => c.id === app.cat) || { icon: "🎵", name: "곡" };
+    $("#songsHello").textContent = `${cat.icon} ${cat.name}`;
+    const { out, active, visible } = songSets(isAdmin);
+    const items = visible.filter(inCat(app.cat));
+    const hidden = active.filter(inCat(app.cat)).length - items.filter((it) => !out(it)).length; // 학생에게: 이 분류의 곧 열릴 곡 수
     $("#songsNote").textContent = isAdmin
       ? "관리자에게는 검수 중이거나 줄 자료가 없는 곡도 보여요. 학생에게는 검수를 마친 곡만 보여요."
       : hidden ? `곧 열릴 곡·영상이 ${hidden}개 준비 중이에요. 조금만 기다려 주세요!` : "";
     if (!items.length) {
-      $("#songGrid").innerHTML = `<p class="empty-songs">아직 연습할 수 있는 곡이 없어요. 관리자가 곡을 준비하면 여기에 나타나요.</p>`;
+      $("#songGrid").innerHTML = isAdmin
+        ? `<p class="empty-songs">이 분류에는 아직 영상이 없어요. ⚙ 관리 → ✎ 자막 준비실의 [➕ 영상 더하기]로 더할 수 있어요.</p>`
+        : `<p class="empty-songs">아직 연습할 수 있는 곡이 없어요. 관리자가 곡을 준비하면 여기에 나타나요.</p>`;
       return;
     }
     $("#songGrid").innerHTML = items.map((item) => {
       const rec = store.record(p.id, item.videoId);
       const st = songStatus(item, rec, isAdmin);
-      const cat = TT.songs.catOf(item);
       return `
         <button type="button" class="song-card${out(item) ? " is-out" : ""}" data-vid="${esc(item.videoId)}">
           <span class="thumb"><img src="https://i.ytimg.com/vi/${encodeURIComponent(item.videoId)}/hqdefault.jpg" alt="" loading="lazy"></span>
           <span class="song-body">
-            <span class="song-tags"><span class="tag soft">${cat.icon} ${esc(cat.name)}</span>${item.level ? `<span class="tag soft">${esc(item.level)}</span>` : ""}</span>
+            <span class="song-tags">${item.level ? `<span class="tag soft">${esc(item.level)}</span>` : ""}</span>
             <strong>${esc(item.title)}</strong>
             <span class="artist">${esc(item.artist || "")}</span>
             <span class="song-state ${st.cls}">${esc(st.text)}</span>
@@ -513,12 +555,11 @@
       const b = e.target.closest(".song-card");
       if (b) startSong(b.dataset.vid);
     });
-    $("#catTabs").addEventListener("click", (e) => {
-      const b = e.target.closest(".cat-tab");
-      if (!b) return;
-      store.saveSettings({ songTab: b.dataset.tab });
-      renderSongs();
+    $("#catGrid").addEventListener("click", (e) => {
+      const b = e.target.closest(".cat-card");
+      if (b) chooseCat(b.dataset.cat);
     });
+    $("#backToCats").addEventListener("click", goCats);
     $("#dHome").addEventListener("click", goSongs);
     $("#dAgain").addEventListener("click", () => { if (app.lastDone) startSong(app.lastDone, { again: true }); });
     $("#dReplay").addEventListener("click", () => { if (app.lastDone) startSong(app.lastDone, { replay: true }); });
@@ -677,6 +718,7 @@
       if (act !== "loadRecords") {
         if (app.screen === "admin") renderAdmin();
         if (app.screen === "songs") renderSongs();
+        if (app.screen === "cats") renderCats();
       }
     }
   }
@@ -694,12 +736,13 @@
       }
     });
     document.addEventListener("tt-cloud", () => {
-      if (app.screen === "songs") renderCloudBar();
+      if (app.screen === "cats") renderCloudBar();
       if (app.screen === "admin") renderCloudPanel();
     });
     // 새 곡을 받으면 보고 있는 목록을 다시 그립니다(연습 중에는 건드리지 않음).
     document.addEventListener("tt-cloud-pulled", () => {
       if (app.screen === "songs") renderSongs();
+      if (app.screen === "cats") renderCats();
       if (app.screen === "admin") renderAdmin();
     });
   }

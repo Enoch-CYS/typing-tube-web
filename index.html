@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>타이핑 튜브</title>
+  <meta name="description" content="유튜브 영상을 한 줄씩 듣고 따라 치는 영어 타자 연습">
+  <meta name="theme-color" content="#2f6f6a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // 화면이 그려지기 전에 밝게/어둡게를 먼저 적용합니다(깜빡임 방지).
+    try { var s = JSON.parse(localStorage.getItem("tt.settings") || "{}"); if (s.theme === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="34" height="34">
+      <span class="brand-name">타이핑 튜브</span>
+      <small class="brand-sub">English Typing-Tube</small>
+    </div>
+    <div class="topbar-right">
+      <span id="whoChip" class="who-chip" hidden></span>
+      <button id="themeBtn" type="button" class="icon-btn" aria-label="어두운 화면으로 바꾸기">🌙</button>
+    </div>
+  </header>
+
+  <p id="fileWarn" class="file-warn" hidden>
+    ⚠ 지금은 파일을 직접 연 상태라 유튜브 영상이 재생되지 않아요. 폴더의 <b>실행하기.bat</b>을 더블클릭해서 열어 주세요.
+  </p>
+
+  <main id="app">
+    <!-- 1. 첫 설정 -->
+    <section data-screen="setup" class="screen narrow" hidden>
+      <h1>타이핑 튜브에 오신 것을 환영합니다</h1>
+      <p class="lead">유튜브 노래와 영상을 한 줄씩 듣고, 따라 치며 영어와 타자를 함께 익혀요.</p>
+      <form id="studentForm" class="card form" autocomplete="off" hidden>
+        <h2>🙋 학생으로 시작하기</h2>
+        <p class="note">선생님(부모님)께 받은 <b>반 암호</b>를 넣으면 준비된 곡을 받아요.</p>
+        <label class="field">반 암호
+          <input name="code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        </label>
+        <label class="field">닉네임 (12자 이내)
+          <input name="nickname" type="text" maxlength="12" placeholder="예: 별빛, 축구왕" required>
+        </label>
+        <div class="field"><span>그림 고르기</span><div id="studentAvatars" class="avatar-pick"></div></div>
+        <p class="note">실명 대신 닉네임을 써 주세요. 사진은 넣지 않아요.</p>
+        <button class="btn primary big" type="submit">시작하기</button>
+      </form>
+      <h2 id="adminSetupHead" class="setup-sub" hidden>🔑 부모님·선생님(관리자)으로 시작하기</h2>
+      <p id="adminSetupLead" class="lead">먼저 <b>관리자</b>(부모님·선생님)를 만들어요. 관리자만 사용자를 추가하거나 기록을 지울 수 있어요.</p>
+      <form id="setupForm" class="card form" autocomplete="off">
+        <label class="field">관리자 닉네임
+          <input name="nickname" type="text" maxlength="12" placeholder="예: 아빠" required>
+        </label>
+        <div class="field"><span>그림 고르기</span><div id="setupAvatars" class="avatar-pick"></div></div>
+        <div class="two">
+          <label class="field">관리자 PIN (숫자 4자리)
+            <input name="pin" type="password" inputmode="numeric" maxlength="4" required>
+          </label>
+          <label class="field">PIN 한 번 더
+            <input name="pin2" type="password" inputmode="numeric" maxlength="4" required>
+          </label>
+        </div>
+        <p class="note">PIN은 이 기기의 브라우저에만, 알아볼 수 없는 암호 형태로 저장돼요. 잊어버리면 되찾기 어려우니 꼭 기억해 주세요.</p>
+        <button class="btn primary big" type="submit">시작하기</button>
+      </form>
+    </section>
+
+    <!-- 2. 사용자 고르기 -->
+    <section data-screen="profiles" class="screen" hidden>
+      <h1 class="center">누가 연습할까요?</h1>
+      <div id="profileGrid" class="profile-grid"></div>
+      <div class="row center">
+        <button id="addProfileBtn" type="button" class="btn ghost">＋ 사용자 추가</button>
+        <button id="adminBtn" type="button" class="btn ghost">⚙ 관리</button>
+      </div>
+    </section>
+
+    <!-- 3. 곡 고르기 -->
+    <section data-screen="songs" class="screen" hidden>
+      <div class="screen-head">
+        <h1 id="songsHello">어떤 곡으로 연습할까요?</h1>
+        <button id="switchUserBtn" type="button" class="btn ghost">사용자 바꾸기</button>
+      </div>
+      <div id="cloudBar" class="cloud-bar" hidden></div>
+      <div id="catTabs" class="cat-tabs" role="tablist" aria-label="분류"></div>
+      <div id="songGrid" class="song-grid"></div>
+      <p id="songsNote" class="note center"></p>
+    </section>
+
+    <!-- 4. 연습 -->
+    <section data-screen="practice" class="screen practice" hidden>
+      <div class="practice-head">
+        <button id="pExit" type="button" class="btn ghost small">← 그만하기</button>
+        <div class="p-title"><strong id="pTitle"></strong><span id="pArtist"></span></div>
+        <span id="pStatus" class="status-pill"></span>
+      </div>
+
+      <div class="video-wrap">
+        <div class="video-frame">
+          <div id="pVideo" class="video-slot"></div>
+          <div id="pShield" class="video-shield">
+            <div id="pStartCard" class="start-card">
+              <button id="pStart" type="button" class="btn primary big" disabled>영상 불러오는 중…</button>
+              <p id="pStartNote"></p>
+            </div>
+            <div id="pErrCard" class="start-card err-card" hidden>
+              <p id="pErrMsg"></p>
+              <button id="pErrBack" type="button" class="btn primary">곡 목록으로</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="pCaption" class="caption-area">
+        <div id="pLine" class="caption-line"></div>
+        <div id="pNext" class="caption-next"></div>
+      </div>
+
+      <div id="pTypeBox" class="type-box blurred">
+        <div id="pTypedWrap" class="typed-wrap"><span id="pTyped" class="typed"></span><span class="caret"></span><span id="pWrong" class="wrong-key"></span></div>
+        <!-- type=password: 크롬·엣지는 이 칸에서 한글 입력기를 꺼서, 한글 상태여도 영어가 들어갑니다(칸을 벗어나면 원래대로). -->
+        <input id="pInput" class="type-input" type="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" aria-label="타자 입력란">
+        <span class="blur-note">여기를 누르고 쳐요</span>
+      </div>
+      <p id="pHint" class="type-hint" aria-live="polite"></p>
+
+      <div class="stats-bar">
+        <div class="stat score"><span class="stat-label">정확도</span><strong id="pAcc">–</strong></div>
+        <div class="stat score"><span class="stat-label">WPM</span><strong id="pWpm">–</strong></div>
+        <div class="stat grow">
+          <span class="stat-label">진행 <b id="pProg">0 / 0</b> 줄</span>
+          <div class="bar"><i id="pBar"></i></div>
+        </div>
+        <div class="tools">
+          <button id="pReplay" type="button" class="btn tool">↻ 다시 듣기 <kbd>Enter</kbd></button>
+          <button id="pSlow" type="button" class="btn tool">🐢 느리게 듣기</button>
+          <button id="pMode" type="button" class="btn tool" title="누르면 보고 치기 ↔ 듣고 치기">👀 보고 치기</button>
+          <button id="pStrict" type="button" class="btn tool">채점: 너그럽게</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 완료 -->
+    <section data-screen="done" class="screen narrow" hidden>
+      <div class="card done-card">
+        <p id="doneWho" class="done-who"></p>
+        <div id="dBadge" class="badge"></div>
+        <h1 id="dTitle"></h1>
+        <p id="dMsg" class="lead"></p>
+        <p id="dExtra" class="extra" hidden></p>
+        <div id="dCompare" class="compare"></div>
+        <div id="dWords" class="done-words"></div>
+        <p class="today">오늘은 여기까지! 눈과 손가락도 잠시 쉬어 주세요. 수고 많았어요. 😊</p>
+        <div class="row center">
+          <button id="dReplay" type="button" class="btn">🎵 다시 듣기</button>
+          <button id="dAgain" type="button" class="btn ghost">한 번 더 하기</button>
+          <button id="dHome" type="button" class="btn primary">곡 목록으로</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 관리 -->
+    <section data-screen="admin" class="screen" hidden>
+      <div class="screen-head">
+        <h1>⚙ 관리</h1>
+        <button id="adminBack" type="button" class="btn ghost">← 돌아가기</button>
+      </div>
+      <div class="admin-grid">
+        <div class="card wide">
+          <h2>사용자</h2>
+          <div id="userList" class="user-list"></div>
+          <button id="adminAddUser" type="button" class="btn primary">＋ 사용자 추가</button>
+        </div>
+        <div class="card wide">
+          <h2>📊 연습 기록</h2>
+          <p class="note">사용자마다 곡별 완주 횟수, 마지막 기록, 가장 좋은 기록, 다시 보면 좋은 단어를 보여 줘요.</p>
+          <div id="recordList" class="record-list"></div>
+          <div id="cloudRecords" class="cloud-records" hidden></div>
+        </div>
+        <div class="card">
+          <h2>연습 자막</h2>
+          <p>노래 가사·영상 대사를 가져와 한 줄씩 듣고 검수해서 연습용 자막을 만들어요.</p>
+          <button id="openMaker" type="button" class="btn primary">✎ 자막 준비실</button>
+          <h3>☁ 곡 창고 (구글 시트)</h3>
+          <p class="note">연결하면 여기서 검수한 곡이 아들·학생 기기로 가고, 학생들의 완주 기록이 모여요.</p>
+          <div id="cloudPanel" class="cloud-panel"></div>
+        </div>
+        <div class="card">
+          <h2>백업</h2>
+          <p>사용자·기록·줄 자료를 파일 하나로 내려받거나, 그 파일로 되살려요. 다른 기기로 옮길 때도 써요.</p>
+          <div class="row">
+            <button id="exportAll" type="button" class="btn">⬇ 전체 내보내기</button>
+            <button id="importAll" type="button" class="btn">⬆ 가져오기</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>관리자 PIN</h2>
+          <p>PIN을 한 번 넣으면 10분 동안은 다시 묻지 않아요.</p>
+          <div class="row">
+            <button id="changePin" type="button" class="btn">PIN 바꾸기</button>
+            <button id="lockAdmin" type="button" class="btn">🔒 지금 잠그기</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 자막 준비실 (옛 이름: 줄 만들기) -->
+    <section data-screen="maker" class="screen" hidden>
+      <div class="screen-head">
+        <h1>✎ 자막 준비실</h1>
+        <button id="mBack" type="button" class="btn ghost">← 관리로</button>
+      </div>
+      <p class="note">노래 가사·영상 대사는 저작권이 있어요. 가사는 관리자가 직접 가져와 검수하고, 이 기기와 아빠의 곡 창고(구글 시트)에만 저장해요. 학생은 반 암호가 있어야 받을 수 있어요.</p>
+
+      <div class="maker-grid">
+        <div class="maker-col">
+          <div class="card step">
+            <h2><span class="step-no">1</span> 영상 고르기</h2>
+            <select id="mSong" class="select"></select>
+            <p id="mSongState" class="note"></p>
+            <button id="mAddVideo" type="button" class="btn tool" title="유튜브 주소로 새 영상을 목록에 더해요(가사는 2단계에서)">➕ 영상 더하기</button>
+            <button id="mHideSong" type="button" class="btn tool" title="곡을 통째로 연습 목록에서 빼거나 되살려요(줄 자료는 그대로)">🚫 이 곡 빼기</button>
+          </div>
+          <div class="card step">
+            <h2><span class="step-no">2</span> 가사 가져오기</h2>
+            <div id="mTalkHelp" class="find-box" hidden>
+              <h3>📜 유튜브 스크립트 붙여넣기 <span class="tag soft">강의·대화·영화</span></h3>
+              <p class="note">유튜브에서 이 영상을 열고, 설명 아래의 <b>[스크립트 표시]</b>를 누릅니다. 오른쪽에 나온 스크립트를 처음부터 끝까지 드래그해 복사한 뒤 아래 칸에 붙여 넣고 [줄 나누기]를 누르면, 시간(<code>0:12</code>)과 줄이 자동으로 채워져요. 그다음 3단계에서 한 줄씩 검수해 주세요.</p>
+              <p id="mClipNote" class="note" hidden></p>
+            </div>
+            <div id="mFindBox" class="find-box">
+              <h3>🔎 가사 자동 찾기 <span class="tag soft">추천</span></h3>
+              <p class="note">공개 가사 자료실 <b>LRCLIB</b>에서 <b>시간이 붙은 가사</b>를 찾아 줄과 시간을 한 번에 채워요. 사람들이 함께 올린 자료라 오타·시간 차이가 있을 수 있으니, 3단계에서 꼭 한 줄씩 검수해 주세요.</p>
+              <div class="two">
+                <label class="field">곡 제목<input id="mFindTitle" type="text" spellcheck="false"></label>
+                <label class="field">가수<input id="mFindArtist" type="text" spellcheck="false"></label>
+              </div>
+              <button id="mFind" type="button" class="btn primary">🔎 가사 자동 찾기</button>
+              <div id="mFindResult" class="find-result" hidden>
+                <label class="field">찾은 버전 (영상 길이에 가까운 순서)
+                  <select id="mFindPick" class="select"></select>
+                </label>
+                <button id="mFindApply" type="button" class="btn primary">이 버전으로 줄 채우기</button>
+              </div>
+            </div>
+            <h3>또는 직접 붙여 넣기</h3>
+            <p class="note">한 줄에 한 문장(한 소절)씩 붙여 넣어요. 시간이 붙은 유튜브 스크립트(<code>0:12</code>)나 LRC(<code>[00:12.34]</code>)도 그대로 붙여 넣으면 시간이 자동으로 들어가요.</p>
+            <textarea id="mPaste" rows="6" spellcheck="false" placeholder="여기에 가사를 붙여 넣어 주세요"></textarea>
+            <button id="mSplit" type="button" class="btn">줄 나누기</button>
+          </div>
+          <div class="card step">
+            <h2><span class="step-no">4</span> 어려운 단어 뜻</h2>
+            <p class="note">한 줄에 하나씩 <code>단어 = 뜻</code>으로 적어요. 초등 5학년 눈높이로 짧게(2~6자).</p>
+            <button id="mSuggest" type="button" class="btn">📖 단어장에서 찾아 채우기</button>
+            <textarea id="mGloss" rows="7" spellcheck="false" placeholder="suddenly = 갑자기"></textarea>
+          </div>
+          <div class="card step">
+            <h2><span class="step-no">5</span> 저장</h2>
+            <div class="row">
+              <button id="mSave" type="button" class="btn primary big">💾 이 기기에 저장</button>
+            </div>
+            <div class="row">
+              <button id="mExport" type="button" class="btn">⬇ 곡 파일 내보내기</button>
+              <button id="mImport" type="button" class="btn">⬆ 곡 파일 가져오기</button>
+              <button id="mDelete" type="button" class="btn danger">줄 자료 지우기</button>
+            </div>
+            <p class="note">검수 ✓를 할 때마다 자동으로 저장돼요. <b>모든 줄을 ✓하면</b> 아들·학생의 곡 목록에 공개돼요. 곡 창고(구글 시트) 저장은 2단계에서 더해요.</p>
+          </div>
+        </div>
+
+        <div class="maker-col">
+          <div id="mStep3" class="card step sticky">
+            <h2><span class="step-no">3</span> 검수·시간 체크</h2>
+            <div class="video-frame"><div id="mVideo" class="video-slot"></div>
+              <div id="mShield" class="video-shield started clickable" title="누르면 재생/멈춤"></div></div>
+            <div class="row player-row">
+              <button id="mPlayStart" type="button" class="btn tool">⏮ 처음부터</button>
+              <button id="mPlayPause" type="button" class="btn tool">⏯ 재생/멈춤</button>
+              <button id="mBack5" type="button" class="btn tool">« 5초</button>
+              <button id="mSlow" type="button" class="btn tool">🐢 느리게</button>
+              <span id="mTime" class="time-readout">0:00.0</span>
+            </div>
+            <div class="row mode-row">
+              <button id="mReview" type="button" class="btn primary">✔ 한 줄씩 검수하기</button>
+              <button id="mTapMode" type="button" class="btn">⌨ 시간 찍기</button>
+              <button id="mSkipRest" type="button" class="btn tool" hidden title="✓ 하지 않은 줄을 연습에서 빼요(되살릴 수 있어요)">🚫 ✓ 안 한 줄 모두 빼기</button>
+              <span id="mReviewCount" class="review-count"></span>
+            </div>
+            <div id="mReviewPad" class="review-pad" hidden></div>
+            <div id="mTapPad" class="tap-pad" hidden></div>
+            <div class="row shift-row">
+              <span class="note">전체 시간 밀기</span>
+              <button type="button" class="btn tool sm" data-shift="-0.5">−0.5초</button>
+              <button type="button" class="btn tool sm" data-shift="-0.1">−0.1초</button>
+              <button type="button" class="btn tool sm" data-shift="0.1">+0.1초</button>
+              <button type="button" class="btn tool sm" data-shift="0.5">+0.5초</button>
+            </div>
+            <details class="keys-help">
+              <summary>단축키 보기</summary>
+              <p class="note"><b>검수</b>: <kbd>Enter</kbd> ✓ 맞아요·다음 줄 · <kbd>R</kbd> 다시 듣기 · <kbd>←</kbd><kbd>→</kbd> 시작 0.1초 당기기·늦추기 · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 끝 0.1초 줄이기·늘리기 · <kbd>E</kbd> 가사 고치기 · <kbd>M</kbd> 아래 줄과 합치기 · <kbd>S</kbd> 두 줄로 나누기 · <kbd>D</kbd> 연습에서 빼기/되살리기 · <kbd>Space</kbd> 재생/멈춤</p>
+              <p class="note"><b>뺀 줄</b>(🚫): 표에 흐리게 남고 연습 화면에는 나오지 않아요. 그 줄의 소리는 앞 줄에 붙어 이어 들려요. 표의 ↩를 누르면 되살아나요.</p>
+              <p class="note"><b>시간 찍기</b>: <kbd>Space</kbd> 줄이 시작될 때 · <kbd>Enter</kbd> 줄이 끝날 때(긴 간주 앞, 마지막 줄) · <kbd>Backspace</kbd> 마지막 표시 취소 · <kbd>←</kbd> 5초 뒤로</p>
+            </details>
+            <div class="table-wrap">
+              <table id="mTable" class="line-table">
+                <thead><tr><th>#</th><th>✓</th><th>시작(초)</th><th>끝(초)</th><th>가사</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="data/config.js"></script>
+  <script src="data/categories.js"></script>
+  <script src="data/catalog/pop.js"></script>
+  <script src="data/catalog/ccm.js"></script>
+  <script src="data/catalog/talk.js"></script>
+  <script src="data/catalog/movie.js"></script>
+  <script src="data/catalog/ted.js"></script>
+  <script src="data/dict.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/cloud.js"></script>
+  <script src="js/typing.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/praise.js"></script>
+  <script src="js/practice.js"></script>
+  <script src="js/maker.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

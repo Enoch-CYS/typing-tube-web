@@ -624,5 +624,6 @@
     $("#pErrBack").addEventListener("click", () => { close(); TT.app.goSongs(); });
   }
 
-  TT.practice = { init, open, close, exit, isOpen: () => !!P, prepareLines };   // prepareLines: 시험용으로도 씀
+  TT.practice = { init, open, close, exit, isOpen: () => !!P, prepareLines,   // prepareLines: 시험용으로도 씀
+    keyFromCode, isImeKey };                                                  // 문장 연습(drill.js)도 같은 자판 처리를 씀
 })();

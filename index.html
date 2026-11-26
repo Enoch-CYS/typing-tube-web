@@ -154,6 +154,57 @@
       </div>
     </section>
 
+    <!-- 4-2. 문장 연습(생활 영어 단원): 영상 대신 문장 카드, 기기 음성이 읽어 줌 -->
+    <section data-screen="drill" class="screen practice" hidden>
+      <div class="practice-head">
+        <button id="qExit" type="button" class="btn ghost small">← 그만하기</button>
+        <div class="p-title"><strong id="qTitle"></strong><span id="qSubTitle"></span></div>
+        <span id="qStatus" class="status-pill"></span>
+      </div>
+
+      <div class="video-wrap">
+        <div class="video-frame lesson-frame">
+          <div id="qCard" class="lesson-card" aria-live="polite"></div>
+          <div id="qShield" class="video-shield">
+            <div id="qStartCard" class="start-card lesson-start">
+              <p id="qPattern" class="lesson-pattern"></p>
+              <p id="qStartNote"></p>
+              <button id="qStart" type="button" class="btn primary big">▶ 시작</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="qCaption" class="caption-area">
+        <div id="qSub" class="lesson-sub"></div>
+        <div id="qLine" class="caption-line"></div>
+        <div id="qBank" class="tile-bank" hidden></div>
+      </div>
+
+      <div id="qTypeBox" class="type-box blurred">
+        <div id="qTypedWrap" class="typed-wrap"><span id="qTyped" class="typed"></span><span class="caret"></span><span id="qWrong" class="wrong-key"></span></div>
+        <input id="qInput" class="type-input" type="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" aria-label="타자 입력란">
+        <span class="blur-note">여기를 누르고 쳐요</span>
+      </div>
+      <p id="qHint" class="type-hint" aria-live="polite"></p>
+
+      <div class="stats-bar">
+        <div class="stat score"><span class="stat-label">정확도</span><strong id="qAcc">–</strong></div>
+        <div class="stat score"><span class="stat-label">WPM</span><strong id="qWpm">–</strong></div>
+        <div class="stat grow">
+          <span class="stat-label">진행 <b id="qProg">0 / 0</b> 문제</span>
+          <div class="bar"><i id="qBar"></i></div>
+        </div>
+        <div class="tools">
+          <button id="qSay" type="button" class="btn tool">🔊 다시 듣기 <kbd>Enter</kbd></button>
+          <button id="qAnswer" type="button" class="btn tool" hidden>🔊 정답 듣기</button>
+          <button id="qMode" type="button" class="btn tool" title="누르면 보고 치기 ↔ 듣고 치기">👀 보고 치기</button>
+          <button id="qReveal" type="button" class="btn tool" hidden>💡 정답 보기</button>
+          <button id="qStrict" type="button" class="btn tool">채점: 너그럽게</button>
+        </div>
+      </div>
+    </section>
+
     <!-- 5. 완료 -->
     <section data-screen="done" class="screen narrow" hidden>
       <div class="card done-card">
@@ -351,6 +402,7 @@
   <script src="js/player.js"></script>
   <script src="js/praise.js"></script>
   <script src="js/practice.js"></script>
+  <script src="js/drill.js"></script>
   <script src="js/maker.js"></script>
   <script src="js/app.js"></script>
 </body>

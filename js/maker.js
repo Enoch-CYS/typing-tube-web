@@ -150,7 +150,7 @@
   }
   async function addVideoFlow() {
     const curCat = TT.songs.catOf(TT.songs.meta(M.vid) || {}).id;
-    const cats = (TT.categories || []).map((c) => `<option value="${esc(c.id)}"${c.id === curCat ? " selected" : ""}>${esc(c.icon + " " + c.name)}</option>`).join("");
+    const cats = (TT.categories || []).filter((c) => c.kind !== "lesson").map((c) => `<option value="${esc(c.id)}"${c.id === curCat ? " selected" : ""}>${esc(c.icon + " " + c.name)}</option>`).join("");
     const body =
       `<label class="field">유튜브 주소<input class="v-url" type="url" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false"></label>` +
       `<label class="field">제목<input class="v-title" type="text" maxlength="120" spellcheck="false"></label>` +
@@ -188,13 +188,14 @@
   function open(videoId) {
     const sel = $("#mSong");
     sel.innerHTML = (TT.categories || []).map((cat) => {
-      const items = (TT.catalog || []).filter((c) => TT.songs.catOf(c).id === cat.id);
+      // 교재 단원(lesson)은 영상이 없어 자막 준비실에 나오지 않습니다.
+      const items = (TT.catalog || []).filter((c) => !c.lesson && TT.songs.catOf(c).id === cat.id);
       if (!items.length) return "";
       return `<optgroup label="${esc(cat.icon + " " + cat.name)}">` + items.map((c) =>
         `<option value="${esc(c.videoId)}">${esc(songLabel(c))}</option>`
       ).join("") + "</optgroup>";
     }).join("");
-    const vid = videoId && TT.songs.meta(videoId) ? videoId : (TT.catalog[0] || {}).videoId;
+    const vid = videoId && TT.songs.meta(videoId) && !TT.songs.meta(videoId).lesson ? videoId : (TT.catalog.find((c) => !c.lesson) || {}).videoId;
     sel.value = vid;
     loadSong(vid);
     clearInterval(M.timer);

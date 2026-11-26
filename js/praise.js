@@ -65,7 +65,7 @@
       out = {
         kind: "first", emoji: "🌱",
         title: "첫 완주를 축하해요!",
-        message: `「${title}」 ${result.lines}줄을 끝까지 따라 쳤어요. 시작한 일을 끝까지 해낸 것, 그것이 가장 큰 실력이에요.`
+        message: `「${title}」 ${result.lines}${result.unit === "문제" ? "문제를 끝까지 해냈어요" : "줄을 끝까지 따라 쳤어요"}. 시작한 일을 끝까지 해낸 것, 그것이 가장 큰 실력이에요.`
       };
     } else {
       const dA = Math.round((acc - prev.accuracy) * 10) / 10;

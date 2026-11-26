@@ -13,6 +13,7 @@
   function show(name) {
     if (app.screen === "practice" && name !== "practice") TT.practice.close();
     if (app.screen === "maker" && name !== "maker") TT.maker.close();
+    if (app.screen === "drill" && name !== "drill") TT.drill.close();
     $$("main > [data-screen]").forEach((s) => { s.hidden = s.dataset.screen !== name; });
     app.screen = name;
     document.body.dataset.view = name; // 화면별 여백 조정용(data-screen과 이름이 겹치지 않게)
@@ -178,7 +179,8 @@
     const all = TT.songs.list();
     const out = (it) => TT.songs.isHidden(it.videoId);
     const active = all.filter((it) => !out(it));
-    const published = active.filter((it) => TT.songs.isPublished(it.song));
+    // 교재 단원(lesson)은 Claude가 지은 문장이 목록 파일에 들어 있어 검수 없이 바로 공개됩니다.
+    const published = active.filter((it) => !!it.lesson || TT.songs.isPublished(it.song));
     const visible = isAdmin ? active.concat(all.filter(out)) : published;
     return { all, out, active, published, visible };
   }
@@ -190,8 +192,10 @@
     renderCats();
     show("cats");
   }
-  // 세는 말: 노래(kind song)는 「곡」, 강의·영화·대화(kind talk)는 「편」(영상)
-  function unit(kind) { return kind === "talk" ? { n: "편", w: "영상" } : { n: "곡", w: "곡" }; }
+  // 세는 말: 노래(kind song)는 「곡」, 강의·영화(kind talk)는 「편」(영상), 교재(kind lesson)는 「단원」
+  function unit(kind) {
+    return kind === "talk" ? { n: "편", w: "영상" } : kind === "lesson" ? { n: "단원", w: "단원" } : { n: "곡", w: "곡" };
+  }
   const unitOfCat = (catId) => unit(TT.songs.catOf({ cat: catId }).kind);
 
   // 분류 카드: 곡(편) 수 + 내 완주 수. 학생에게 아직 공개된 것이 없는 분류는 「곧 열려요」로 흐리게.
@@ -243,7 +247,29 @@
     const chars = TT.songs.keptLines(song).reduce((n, l) => n + String(l.text || "").replace(/[^A-Za-z0-9 ]/g, "").length, 0);
     return Math.max(1, Math.round(chars / 75));
   }
+  // 교재 단원(문제은행): 할 때마다 은행에서 따라 치기 n문장 + 문답 n개를 골라요.
+  // 예상 시간 = 은행 문장 평균 글자 수로 어림(15 WPM, 문답 대답도 같은 문장) + 문답은 조각 맞추기 시간으로 문제당 약 1분
+  function lessonCounts(L) {
+    const bank = L.bank || [];
+    const pick = L.pick || {};
+    const nF = Math.min(pick.follow || 6, bank.length);
+    const nQ = Math.min(pick.qa || 4, nF);
+    return { bank: bank.length, nF, nQ, total: nF + nQ };
+  }
+  function lessonStatus(item, rec) {
+    const L = item.lesson;
+    const c = lessonCounts(L);
+    if (rec && rec.current && rec.current.lineIndex > 0) return { text: `이어서 하기 · ${rec.current.lineIndex}/${rec.totalLines || c.total}문제`, cls: "go" };
+    if (rec && rec.completed && rec.last) return { text: `완주 ${rec.completions || 1}회 · 지난번 정확도 ${rec.last.accuracy}% · ${rec.last.wpm} WPM · 할 때마다 새 문장`, cls: "done" };
+    const bank = L.bank || [];
+    const len = (t) => String(t || "").replace(/[^A-Za-z0-9 ]/g, "").length;
+    const avgF = bank.reduce((n, b) => n + len(b.en), 0) / Math.max(1, bank.length);
+    const avgQ = bank.reduce((n, b) => n + len(b.en), 0) / Math.max(1, bank.length);
+    const min = Math.max(1, Math.round((avgF * c.nF + avgQ * c.nQ) / 75) + c.nQ);
+    return { text: `문장 ${c.bank}개 중 매번 ${c.nF}개 · 따라 치기 ${c.nF} + 문답 ${c.nQ} · 약 ${min}분`, cls: "new" };
+  }
   function songStatus(item, rec, isAdmin) {
+    if (item.lesson) return lessonStatus(item, rec);
     const total = item.song ? TT.songs.keptLines(item.song).length : 0;
     if (TT.songs.isHidden(item.videoId)) return { text: `🚫 뺀 ${unit(TT.songs.catOf(item).kind).w} · 학생에게 보이지 않아요 (자막 준비실에서 되살리기)`, cls: "muted" };
     if (!item.song) return { text: "줄 자료 준비 중", cls: "muted" };
@@ -266,7 +292,10 @@
     const u = unitOfCat(app.cat);
     const items = visible.filter(inCat(app.cat));
     const hidden = active.filter(inCat(app.cat)).length - items.filter((it) => !out(it)).length; // 학생에게: 이 분류의 곧 열릴 곡 수
-    $("#songsNote").textContent = isAdmin
+    const lessonCat = TT.songs.catOf({ cat: app.cat }).kind === "lesson";
+    $("#songsNote").textContent = lessonCat
+      ? "🔊 기기 음성이 문장과 질문을 읽어 줘요. 소리를 켜거나 이어폰을 써 주세요."
+      : isAdmin
       ? `관리자에게는 검수 중이거나 줄 자료가 없는 ${u.w}도 보여요. 학생에게는 검수를 마친 ${u.w}만 보여요.`
       : hidden ? `곧 열릴 ${u.w} ${hidden}${u.n}이 준비 중이에요. 조금만 기다려 주세요!` : "";
     if (!items.length) {
@@ -280,7 +309,9 @@
       const st = songStatus(item, rec, isAdmin);
       return `
         <button type="button" class="song-card${out(item) ? " is-out" : ""}" data-vid="${esc(item.videoId)}">
-          <span class="thumb"><img src="https://i.ytimg.com/vi/${encodeURIComponent(item.videoId)}/hqdefault.jpg" alt="" loading="lazy"></span>
+          ${item.lesson
+            ? `<span class="thumb lesson-thumb"><b>${esc(item.lesson.pattern.en)}</b><small>${esc(item.lesson.bank[0].en)}</small></span>`
+            : `<span class="thumb"><img src="https://i.ytimg.com/vi/${encodeURIComponent(item.videoId)}/hqdefault.jpg" alt="" loading="lazy"></span>`}
           <span class="song-body">
             <span class="song-tags">${item.level ? `<span class="tag soft">${esc(item.level)}</span>` : ""}</span>
             <strong>${esc(item.title)}</strong>
@@ -290,7 +321,33 @@
         </button>`;
     }).join("");
   }
+  // 이어서 할 문제 수: 지난번에 고른 문장 수(없으면 단원 기본 수)
+  const rec0Total = (item, rec) => (rec && rec.totalLines) || lessonCounts(item.lesson).total;
+  // 교재 단원: 영상 대신 문장 연습 화면(drill)으로 엽니다.
+  async function startLesson(item, opts = {}) {
+    const p = app.profile;
+    const total = rec0Total(item, store.record(p.id, item.videoId));
+    const rec = store.record(p.id, item.videoId);
+    let resume = false;
+    if (!opts.again && rec && rec.current && rec.current.lineIndex > 0 && rec.current.lineIndex < total) {
+      const v = await modal({
+        title: "이어서 할까요?",
+        body: `<p>지난번에 ${rec.current.lineIndex}문제까지 했어요.</p>`,
+        actions: [
+          { label: "처음부터", value: "restart", kind: "ghost" },
+          { label: `${rec.current.lineIndex + 1}번째 문제부터 이어서`, value: "resume", kind: "primary" }
+        ]
+      });
+      if (v == null) return;
+      resume = v === "resume";
+    }
+    show("drill");
+    TT.drill.open(item, p, { resume });
+  }
+
   async function startSong(vid, opts = {}) {
+    const meta = TT.songs.meta(vid);
+    if (meta && meta.lesson) { if (!opts.replay) startLesson(meta, opts); return; }
     const song = TT.songs.get(vid);
     const p = app.profile;
     const talk = TT.songs.kindOf(vid) === "talk";
@@ -397,7 +454,10 @@
     $("#dCompare").innerHTML =
       cmpRow("정확도", result.accuracy, prev ? prev.accuracy : null, "%", 1) +
       cmpRow("타자 속도", result.wpm, prev ? prev.wpm : null, " WPM") +
-      `<div class="cmp-row"><span class="cmp-label">걸린 시간</span><strong class="cmp-now">${TT.ui.fmtDuration(result.seconds)}</strong><span class="cmp-prev">${result.lines}줄 완주</span></div>`;
+      `<div class="cmp-row"><span class="cmp-label">걸린 시간</span><strong class="cmp-now">${TT.ui.fmtDuration(result.seconds)}</strong><span class="cmp-prev">${result.lines}${result.unit || "줄"} 완주</span></div>`;
+    // 교재 단원에는 「다시 듣기(노래에 맞춰 저절로 쳐짐)」가 없어요.
+    $("#dReplay").hidden = !!song.lesson;
+    $("#dHome").textContent = song.lesson ? "단원 목록으로" : "곡 목록으로";
     const words = result.wrongWords;
     $("#dWords").innerHTML = words.length
       ? `<h3>다시 보면 좋은 단어</h3><div class="chips">${words.map((w) => {
@@ -773,6 +833,7 @@
     bindCloud();
     initSetup();
     TT.practice.init();
+    TT.drill.init();
     TT.maker.init();
     if (location.protocol === "file:") {
       $("#fileWarn").hidden = false;

@@ -951,6 +951,12 @@
   async function split() {
     let parsed = parsePaste($("#mPaste").value);
     if (!parsed.length) { toast("붙여 넣은 가사가 없어요."); return; }
+    // 한국어 화면의 유튜브는 번역 자막이 있는 영상(TED 등)의 스크립트를 한국어로 보여 줍니다.
+    const korean = parsed.filter((l) => /[가-힣]/.test(l.text)).length;
+    if (korean > parsed.length * 0.3) {
+      toast("붙여 넣은 스크립트가 한국어예요. 유튜브 오른쪽 위 프로필 사진(로그인 안 했으면 ⋮) → 언어 → English로 바꾼 뒤, 스크립트를 다시 열어 복사해 주세요. 다 하면 같은 곳에서 한국어로 되돌리면 돼요.", 9000);
+      return;
+    }
     const dropped = parsed.untimedDropped || 0;
     const clip = (TT.songs.meta(M.vid) || {}).clip;
     const t = trimToClip(parsed, clip);

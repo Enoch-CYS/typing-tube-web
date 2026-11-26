@@ -526,3 +526,8 @@ body[data-view="practice"] main { padding-top: 12px; padding-bottom: 16px; }
 .cat-card.is-soon { opacity: 0.5; box-shadow: none; }
 .cat-card.is-soon:hover { transform: none; border-color: var(--line); }
 @media (max-width: 420px) { .cat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .cat-card { min-height: 128px; padding: 16px 8px; } }
+
+/* ── 스크립트 붙여넣기 안내(강의·대화·영화) ── */
+a.btn { text-decoration: none; }
+.talk-steps { margin: 6px 0 12px; padding-left: 1.4em; line-height: 1.6; }
+.talk-steps li { margin: 4px 0; }

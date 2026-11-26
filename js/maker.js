@@ -36,6 +36,15 @@
       .trim();
   }
 
+  // 시각 바로 뒤에 붙은 「읽어 주는 시간」(21초 / 1분 24초 / 1 minute, 24 seconds)을 떼어 냅니다.
+  // 그 값이 앞의 시각과 같을 때만 떼어 내므로, 대사가 숫자로 시작해도 잘리지 않아요.
+  function stripSpokenTime(text, sec) {
+    const m = String(text).match(/^\s*(?:(\d+)\s*(?:시간|hours?)[,\s]*)?(?:(\d+)\s*(?:분|minutes?)[,\s]*)?(?:(\d+)\s*(?:초|seconds?))?/i);
+    if (!m || !m[0].trim() || !(m[1] || m[2] || m[3])) return text;
+    const said = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+    return Math.abs(said - Math.floor(sec)) <= 1 ? String(text).slice(m[0].length).trim() : text;
+  }
+
   // 붙여 넣은 글(또는 가져온 LRC)을 줄로 나눕니다.
   //  · 유튜브 스크립트: "0:12" 다음 줄에 글, 또는 "0:12 글"
   //  · LRC: "[00:12.34] 글", 태그 여러 개 가능, 글 없는 태그 줄 = 앞 줄이 끝나는 시간
@@ -43,7 +52,8 @@
     const rows = String(raw || "").replace(/\r/g, "").split("\n").map((s) => s.trim());
     const TS = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}(?:[.,]\\d+)?";
     const plainOnly = new RegExp(`^(${TS})$`);
-    const plainLead = new RegExp(`^(${TS})\\s+(.+)$`);
+    // 요즘 유튜브 스크립트를 복사하면 「0:21」+「21초」(읽어 주는 시간)+대사가 띄어쓰기 없이 붙어 나와요: "0:2121초Oh, …"
+    const plainLead = new RegExp(`^(${TS})\\s*(\\S.*)$`);
     const lrcTags = new RegExp(`^((?:\\[${TS}\\]\\s*)+)(.*)$`);
     const tsAll = new RegExp(TS, "g");
     const lrcMeta = /^\[[a-z]+:.*\]$/i;
@@ -54,6 +64,8 @@
       if (!r || lrcMeta.test(r)) continue;
       let m;
       if ((m = r.match(plainOnly))) { pending = toSec(m[1]); continue; }
+      // 「0:21」 다음 줄에 따로 온 「21초」 같은 읽어 주는 시간은 건너뜀
+      if (pending != null && stripSpokenTime(r, pending) === "") continue;
       if ((m = r.match(lrcTags))) {
         const times = (m[1].match(tsAll) || []).map(toSec).filter((t) => t != null);
         const text = cleanText(m[2]);
@@ -65,11 +77,28 @@
       let start = pending;
       let text = r;
       if ((m = r.match(plainLead))) { start = toSec(m[1]); text = m[2]; }
+      if (start != null) text = stripSpokenTime(text, start);
       pending = null;
       text = cleanText(text);
-      if (!/[\p{L}\p{N}]/u.test(text)) continue;
+      // [Music]처럼 소리 표시만 있는 줄 = 앞 줄이 끝나는 시간(음악 앞에서 멈추도록)
+      if (!/[\p{L}\p{N}]/u.test(text)) { if (start != null) gaps.push(start); continue; }
+      if (start == null) {
+        // 유튜브 스크립트의 장 제목(「챕터 2: …」)은 건너뜀
+        if (/^(?:챕터|chapter)\s*\d+\s*[:：]/i.test(text)) continue;
+        // 시간 붙은 줄 바로 다음의 시간 없는 줄 = 한 자막이 두 줄로 나뉜 것 → 앞 줄에 이어 붙임
+        const prev = out[out.length - 1];
+        if (prev && prev.start != null && !/^\(?\[/.test(text)) { prev.text = `${prev.text} ${text}`; continue; }
+      }
       out.push({ start, end: null, text });
     }
+    // 유튜브 스크립트를 통째로 복사하면 장(챕터) 제목처럼 시간 없는 줄이 섞여요.
+    // 대부분의 줄에 시간이 있으면, 시간 없는 줄은 건너뜁니다(가사만 붙여 넣은 경우는 그대로 둠).
+    const timedN = out.filter((l) => l.start != null).length;
+    let dropped = 0;
+    if (timedN && timedN < out.length && timedN >= out.length * 0.6) {
+      for (let k = out.length - 1; k >= 0; k--) if (out[k].start == null) { out.splice(k, 1); dropped++; }
+    }
+    out.untimedDropped = dropped;
     if (out.length && out.every((l) => l.start != null)) {
       out.sort((a, b) => a.start - b.start);
       // 글 없는 시간 줄 → 그 직전 줄의 끝(간주 앞에서 멈추도록)
@@ -205,7 +234,9 @@
     $("#mTalkHelp").hidden = !isTalk;
     const clip = meta.clip;
     $("#mClipNote").hidden = !(isTalk && clip);
-    if (isTalk && clip) $("#mClipNote").textContent = `이 영상은 길어서 ${fmtTime(clip.start, 0)} ~ ${fmtTime(clip.end, 0)} 구간만 쓰기로 했어요. 스크립트도 이 구간만 붙여 넣어 주세요.`;
+    if (isTalk && clip) $("#mClipNote").textContent = `✂ 이 영상은 ${fmtTime(clip.start, 0)} ~ ${fmtTime(clip.end, 0)} 구간만 써요. 스크립트는 통째로 붙여 넣으셔도 이 구간의 줄만 저절로 남아요.`;
+    // 스크립트를 복사하러 갈 유튜브 주소(구간이 있으면 그 시작 시각부터)
+    $("#mYtLink").href = `https://www.youtube.com/watch?v=${encodeURIComponent(vid)}${isTalk && clip ? `&t=${Math.floor(clip.start)}s` : ""}`;
     $("#mPaste").value = "";
     $("#mGloss").value = saved && saved.glossary ? saved.glossary.map((g) => `${g.word} = ${g.ko}`).join("\n") : "";
     M.tapIdx = firstUntimed();
@@ -905,9 +936,29 @@
     toast("줄 자료를 지웠어요.");
   }
 
+  // 구간(clip)이 정해진 영상: 스크립트를 통째로 붙여 넣어도 그 구간의 줄만 남깁니다.
+  function trimToClip(parsed, clip) {
+    if (!clip || !parsed.length || !parsed.every((l) => l.start != null)) return { lines: parsed, cut: 0 };
+    const inClip = parsed.filter((l) => l.start >= clip.start - 0.5 && l.start < clip.end);
+    if (!inClip.length) return { lines: [], cut: parsed.length, none: true };
+    const last = inClip[inClip.length - 1];
+    const after = parsed[parsed.indexOf(last) + 1];
+    const lastEnd = last.end != null ? last.end : after ? after.start : clip.end;
+    last.end = Math.min(lastEnd, clip.end);
+    return { lines: inClip, cut: parsed.length - inClip.length };
+  }
+
   async function split() {
-    const parsed = parsePaste($("#mPaste").value);
+    let parsed = parsePaste($("#mPaste").value);
     if (!parsed.length) { toast("붙여 넣은 가사가 없어요."); return; }
+    const dropped = parsed.untimedDropped || 0;
+    const clip = (TT.songs.meta(M.vid) || {}).clip;
+    const t = trimToClip(parsed, clip);
+    if (t.none) {
+      toast(`붙여 넣은 스크립트에 이 영상의 구간(${fmtTime(clip.start, 0)}~${fmtTime(clip.end, 0)}) 줄이 없어요. 다른 영상의 스크립트가 아닌지 확인해 주세요.`, 6000);
+      return;
+    }
+    parsed = t.lines;
     if (M.lines.length) {
       const ok = await confirmBox("줄을 다시 나눌까요?", "지금 표의 줄·시간·검수 표시가 모두 지워져요. (가사 한두 군데만 고치려면 아래 표에서 바로 고치면 시간이 남아요)", "다시 나누기", true);
       if (!ok) return;
@@ -919,9 +970,11 @@
     M.revIdx = 0;
     renderTable();
     const timed = parsed.filter((l) => l.start != null).length;
+    const extra = (t.cut ? ` 정해 둔 구간 ${fmtTime(clip.start, 0)}~${fmtTime(clip.end, 0)}만 남기고 ${t.cut}줄은 뺐어요.` : "") +
+      (dropped ? ` 시간 없는 제목 줄 ${dropped}개는 건너뛰었어요.` : "");
     toast(timed === parsed.length
-      ? `${parsed.length}줄로 나눴어요. 시간이 함께 들어 있어요. 3단계에서 [✔ 한 줄씩 검수하기]로 확인해 주세요.`
-      : `${parsed.length}줄로 나눴어요. 이제 3단계에서 [⌨ 시간 찍기]로 시간을 넣어 주세요.`, 4500);
+      ? `${parsed.length}줄로 나눴어요. 시간이 함께 들어 있어요.${extra} 3단계에서 [✔ 한 줄씩 검수하기]로 확인해 주세요.`
+      : `${parsed.length}줄로 나눴어요. 이제 3단계에서 [⌨ 시간 찍기]로 시간을 넣어 주세요.`, 6500);
   }
 
   function init() {

@@ -190,7 +190,11 @@
     renderCats();
     show("cats");
   }
-  // 분류 카드: 곡 수 + 내 완주 수. 학생에게 아직 곡이 없는 분류는 「곧 열려요」로 흐리게.
+  // 세는 말: 노래(kind song)는 「곡」, 강의·영화·대화(kind talk)는 「편」(영상)
+  function unit(kind) { return kind === "talk" ? { n: "편", w: "영상" } : { n: "곡", w: "곡" }; }
+  const unitOfCat = (catId) => unit(TT.songs.catOf({ cat: catId }).kind);
+
+  // 분류 카드: 곡(편) 수 + 내 완주 수. 학생에게 아직 공개된 것이 없는 분류는 「곧 열려요」로 흐리게.
   function renderCats() {
     const p = app.profile;
     const isAdmin = p.role === "admin";
@@ -202,9 +206,10 @@
       const ready = active.filter(inCat(c.id)).length - pub.length;
       const done = doneIn(pub);
       const soon = !isAdmin && !pub.length;
+      const n = unit(c.kind).n;
       const meta = soon ? "곧 열려요"
-        : isAdmin ? `공개 ${pub.length}곡${ready ? ` · 준비 중 ${ready}곡` : ""}${done ? ` · 완주 ${done}곡` : ""}`
-        : `${pub.length}곡 · 완주 ${done}곡`;
+        : isAdmin ? `공개 ${pub.length}${n}${ready ? ` · 준비 중 ${ready}${n}` : ""}${done ? ` · 완주 ${done}${n}` : ""}`
+        : `${pub.length}${n} · 완주 ${done}${n}`;
       return `
         <button type="button" class="cat-card${soon ? " is-soon" : ""}${done && done === pub.length ? " all-done" : ""}" data-cat="${esc(c.id)}">
           <span class="cat-icon" aria-hidden="true">${c.icon}</span>
@@ -212,7 +217,7 @@
           <span class="cat-meta">${esc(meta)}</span>
         </button>`;
     }).join("");
-    $("#catsNote").textContent = isAdmin ? "관리자에게는 준비 중인 곡도 보여요. 학생에게는 검수를 마친 곡만 보여요." : "";
+    $("#catsNote").textContent = isAdmin ? "관리자에게는 준비 중인 곡·영상도 보여요. 학생에게는 검수를 마친 것만 보여요." : "";
     renderCloudBar();
   }
   function chooseCat(id) {
@@ -240,7 +245,7 @@
   }
   function songStatus(item, rec, isAdmin) {
     const total = item.song ? TT.songs.keptLines(item.song).length : 0;
-    if (TT.songs.isHidden(item.videoId)) return { text: "🚫 뺀 곡 · 학생에게 보이지 않아요 (자막 준비실에서 되살리기)", cls: "muted" };
+    if (TT.songs.isHidden(item.videoId)) return { text: `🚫 뺀 ${unit(TT.songs.catOf(item).kind).w} · 학생에게 보이지 않아요 (자막 준비실에서 되살리기)`, cls: "muted" };
     if (!item.song) return { text: "줄 자료 준비 중", cls: "muted" };
     if (!TT.songs.isPublished(item.song)) {
       const pr = TT.songs.reviewProgress(item.song);
@@ -258,15 +263,16 @@
     const cat = (TT.categories || []).find((c) => c.id === app.cat) || { icon: "🎵", name: "곡" };
     $("#songsHello").textContent = `${cat.icon} ${cat.name}`;
     const { out, active, visible } = songSets(isAdmin);
+    const u = unitOfCat(app.cat);
     const items = visible.filter(inCat(app.cat));
     const hidden = active.filter(inCat(app.cat)).length - items.filter((it) => !out(it)).length; // 학생에게: 이 분류의 곧 열릴 곡 수
     $("#songsNote").textContent = isAdmin
-      ? "관리자에게는 검수 중이거나 줄 자료가 없는 곡도 보여요. 학생에게는 검수를 마친 곡만 보여요."
-      : hidden ? `곧 열릴 곡·영상이 ${hidden}개 준비 중이에요. 조금만 기다려 주세요!` : "";
+      ? `관리자에게는 검수 중이거나 줄 자료가 없는 ${u.w}도 보여요. 학생에게는 검수를 마친 ${u.w}만 보여요.`
+      : hidden ? `곧 열릴 ${u.w} ${hidden}${u.n}이 준비 중이에요. 조금만 기다려 주세요!` : "";
     if (!items.length) {
       $("#songGrid").innerHTML = isAdmin
         ? `<p class="empty-songs">이 분류에는 아직 영상이 없어요. ⚙ 관리 → ✎ 자막 준비실의 [➕ 영상 더하기]로 더할 수 있어요.</p>`
-        : `<p class="empty-songs">아직 연습할 수 있는 곡이 없어요. 관리자가 곡을 준비하면 여기에 나타나요.</p>`;
+        : `<p class="empty-songs">아직 연습할 수 있는 ${u.w}이 없어요. 관리자가 ${u.w}을 준비하면 여기에 나타나요.</p>`;
       return;
     }
     $("#songGrid").innerHTML = items.map((item) => {
@@ -287,11 +293,13 @@
   async function startSong(vid, opts = {}) {
     const song = TT.songs.get(vid);
     const p = app.profile;
+    const talk = TT.songs.kindOf(vid) === "talk";
+    const w = talk ? "영상" : "곡";
     if (TT.songs.isHidden(vid)) {
       if (p.role !== "admin") return;
       const go = await modal({
-        title: "뺀 곡이에요",
-        body: "<p>이 곡은 연습 목록에서 뺐어요. 아들·학생에게는 보이지 않아요.<br>[자막 준비실]에서 ↩ 되살리기를 누르면 다시 목록에 나와요. 검수한 줄 자료는 그대로 있어요.</p>",
+        title: `뺀 ${w}이에요`,
+        body: `<p>이 ${w}은 연습 목록에서 뺐어요. 아들·학생에게는 보이지 않아요.<br>[자막 준비실]에서 ↩ 되살리기를 누르면 다시 목록에 나와요. 검수한 줄 자료는 그대로 있어요.</p>`,
         actions: [{ label: "닫기", value: false, kind: "ghost" }, { label: "✎ 자막 준비실로 가기", value: true, kind: "primary" }]
       });
       if (go) openMaker(vid);
@@ -306,23 +314,24 @@
       if (p.role === "admin") {
         const go = await modal({
           title: "아직 줄 자료가 없어요",
-          body: "<p>이 곡은 아직 연습용 줄(가사+시간)이 없어요. [자막 준비실]에서 가사를 가져오고 한 줄씩 검수해 주세요.</p>",
+          body: talk ? "<p>이 영상은 아직 연습용 줄(대사+시간)이 없어요. [자막 준비실]에서 유튜브 스크립트를 붙여 넣고 한 줄씩 검수해 주세요.</p>"
+            : "<p>이 곡은 아직 연습용 줄(가사+시간)이 없어요. [자막 준비실]에서 가사를 가져오고 한 줄씩 검수해 주세요.</p>",
           actions: [{ label: "닫기", value: false, kind: "ghost" }, { label: "✎ 자막 준비실로 가기", value: true, kind: "primary" }]
         });
         if (go && (await requireAdmin())) openMaker(vid);
       } else {
-        await modal({ title: "아직 준비 중이에요", body: "<p>관리자가 이 곡의 줄 자료를 만들면 바로 연습할 수 있어요. 조금만 기다려 주세요!</p>" });
+        await modal({ title: "아직 준비 중이에요", body: `<p>관리자가 이 ${w}의 줄 자료를 만들면 바로 연습할 수 있어요. 조금만 기다려 주세요!</p>` });
       }
       return;
     }
     if (!TT.songs.isPublished(song)) {
       if (p.role !== "admin") {
-        await modal({ title: "아직 준비 중이에요", body: "<p>관리자가 가사를 한 줄씩 확인하고 있어요. 확인이 끝나면 바로 연습할 수 있어요. 조금만 기다려 주세요!</p>" });
+        await modal({ title: "아직 준비 중이에요", body: `<p>관리자가 ${talk ? "대사" : "가사"}를 한 줄씩 확인하고 있어요. 확인이 끝나면 바로 연습할 수 있어요. 조금만 기다려 주세요!</p>` });
         return;
       }
       const pr = TT.songs.reviewProgress(song);
       const v = await modal({
-        title: "검수 중인 곡이에요",
+        title: `검수 중인 ${w}이에요`,
         body: `<p>검수 ✓ ${pr.done}/${pr.total}줄. 아들·학생에게는 아직 보이지 않아요.<br>관리자 미리 연습으로 열까요?</p>`,
         actions: [
           { label: "✎ 검수 이어서 하기", value: "maker", kind: "ghost" },
@@ -337,8 +346,8 @@
     // 완주한 곡: 다시 듣기(자동 타자)와 다시 연습하기 가운데 고릅니다(완료 화면의 [한 번 더 하기]는 바로 연습).
     if (!opts.again && rec && rec.completed && !(rec.current && rec.current.lineIndex > 0)) {
       const v = await modal({
-        title: `「${song.title}」 완주한 곡이에요`,
-        body: `<p>🎵 <b>다시 듣기</b>: 노래를 끝까지 들으며 글자가 노래에 맞춰 저절로 쳐지는 모습을 봐요.<br>⌨ <b>다시 연습하기</b>: 처음부터 다시 쳐서 지난번 기록과 비교해요.</p>`,
+        title: `「${song.title}」 완주한 ${w}이에요`,
+        body: `<p>🎵 <b>다시 듣기</b>: ${talk ? "영상을 끝까지 보며 글자가 말에 맞춰" : "노래를 끝까지 들으며 글자가 노래에 맞춰"} 저절로 쳐지는 모습을 봐요.<br>⌨ <b>다시 연습하기</b>: 처음부터 다시 쳐서 지난번 기록과 비교해요.</p>`,
         actions: [
           { label: "🎵 다시 듣기", value: "replay", kind: "ghost" },
           { label: "⌨ 다시 연습하기", value: "practice", kind: "primary" }

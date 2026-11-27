@@ -28,9 +28,12 @@
     const sorted = pool.slice().sort((a, b) => score(b) - score(a));
     return second ? sorted[1] || sorted[0] : sorted[0];
   }
+  // opts.onDone: 다 읽은 뒤(또는 넉넉한 예상 시간이 지나면) 한 번 부릅니다. 읽기를 못 하는 기기면 바로 부릅니다.
   function say(text, opts = {}) {
-    if (!speech.ok || !text) return;
     const my = D;
+    let called = false;
+    const done = () => { if (called) return; called = true; if (opts.onDone && D === my && D) opts.onDone(); };
+    if (!speech.ok || !text) { setTimeout(done, 300); return; }
     speechSynthesis.cancel();
     // cancel 바로 뒤의 speak가 씹히는 브라우저가 있어 아주 잠깐 쉬었다 읽습니다.
     setTimeout(() => {
@@ -43,13 +46,13 @@
       // 낱말 읽기(quiet)는 짧아서 「읽어 주는 중」 표시를 바꾸지 않습니다.
       if (opts.quiet) { D.speaking = false; renderStatus(); speechSynthesis.speak(u); return; }
       u.onstart = () => { if (D === my) { D.speaking = true; renderStatus(); } };
-      const end = () => { if (D === my) { clearTimeout(D.sayTimer); D.speaking = false; renderStatus(); } };
+      const end = () => { if (D === my) { clearTimeout(D.sayTimer); D.speaking = false; renderStatus(); } done(); };
       u.onend = end;
       u.onerror = end;
       speechSynthesis.speak(u);
       // 끝났다는 신호를 주지 않는 기기도 있어, 넉넉한 예상 시간이 지나면 「읽어 주는 중」을 풉니다.
       clearTimeout(D.sayTimer);
-      D.sayTimer = setTimeout(end, 2000 + (text.length * 90) / D.rate);
+      D.sayTimer = setTimeout(end, 1500 + (text.length * 65) / D.rate);
     }, 60);
   }
   function hush() {
@@ -228,12 +231,14 @@
     pulseDone();
     const it = D.items[D.idx];
     const nextI = D.idx + 1;
+    // 문장을 다 치면 완성된 문장을 한 번 읽어 주고, 다 읽은 뒤 다음 문제로 넘어갑니다.
+    const after = (fn) => say(it.en, { onDone: () => { clearTimeout(D.nextTimer); D.nextTimer = setTimeout(() => { if (D) fn(); }, 400); } });
     if (nextI >= D.items.length) {
       D.idx = nextI;
       D.busy = true;
       hint("단원을 끝까지 했어요! 👏", "soft");
       clearTimeout(D.nextTimer);
-      D.nextTimer = setTimeout(() => { if (D) finish(); }, 900);
+      after(finish);
       return;
     }
     D.idx = nextI;
@@ -243,8 +248,7 @@
     const toQa = it.type === "follow" && D.items[nextI].type === "qa";
     hint(toQa ? "따라 치기를 마쳤어요! 이제 ② 문답: 방금 따라 친 문장으로 질문에 대답하며 복습해요." : it.type === "qa" ? "좋은 대답이에요! 🙂" : "잘했어요!", "soft");
     clearTimeout(D.nextTimer);
-    // 마지막 낱말 읽기가 끝날 틈을 두고 다음 문제로 넘어갑니다.
-    D.nextTimer = setTimeout(() => { if (D) setItem(nextI); }, toQa ? 1600 : 1000);
+    after(() => setItem(nextI));
   }
 
   // ── 낱말 조각 맞추기 ──
@@ -283,16 +287,17 @@
       T.done = true;
       renderTiles();
       hint("순서가 딱 맞아요! 이제 조각 없이 떠올려서 쳐 봐요.", "soft");
-      say(D.items[D.idx].en, { second: true });
+      // 다 맞춘 문장을 한 번 읽어 주고, 다 읽은 뒤 떠올려 치기로 넘어갑니다.
       clearTimeout(D.nextTimer);
-      D.nextTimer = setTimeout(() => {
+      say(D.items[D.idx].en, { onDone: () => { D.nextTimer = setTimeout(toType, 400); } });
+      const toType = () => {
         if (!D) return;
         D.busy = false;
         D.phase = "type";
         newEngine();
         renderAll();
         focusInput();
-      }, 1800);
+      };
       return;
     }
     D.tries++;
@@ -369,7 +374,7 @@
     if (D.busy || !D.engine || D.engine.done) return;
     const r = D.engine.input(ch);
     if (r.kind === "wrong") { flashWrong(ch); wrongHint(r); }
-    else if (r.kind === "ok") { hint("", ""); sayTypedWord(); }
+    else if (r.kind === "ok") { hint("", ""); if (!D.engine.done) sayTypedWord(); } // 마지막 낱말은 완성 문장 읽기로 대신
     renderLine();
     renderTyped();
     if (D.engine.done) itemDone();
@@ -457,7 +462,7 @@
     if (!D || !D.started) return;
     const it = D.items[D.idx];
     if (!it || it.type !== "qa") return;
-    say(it.en, { second: true });
+    say(it.en);
     focusInput();
   }
   function toggleMode() {

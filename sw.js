@@ -1,7 +1,7 @@
 // 서비스 워커 — 앱 파일을 보관해 두어 설치(PWA)와 빠른 열기를 돕습니다.
 // 인터넷이 될 때는 항상 새 파일을 먼저 받아(network-first) 고친 내용이 바로 보이게 합니다.
 // 유튜브 영상은 보관하지 않습니다(영상 재생에는 인터넷이 필요).
-const CACHE = "typing-tube-v22";
+const CACHE = "typing-tube-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,6 +16,7 @@ const ASSETS = [
   "./data/catalog/ted.js",
   "./data/lessons/books.js",
   "./data/lessons/bm-ch4.js",
+  "./data/lessons/bm-ch5.js",
   "./data/dict.js",
   "./js/ui.js",
   "./js/storage.js",

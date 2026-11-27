@@ -128,6 +128,17 @@
       r[pid][vid] = rec;
       write("records", r);
     },
+    // 기록 열쇠 바꾸기(예: 생활 영어 옛 「1단원」 lesson-u01 → 책 번호 bm-u03, 2026-11-27).
+    // 새 열쇠에 기록이 이미 있으면 건드리지 않습니다. 옮긴 사용자 수를 돌려줍니다.
+    renameRecordKey(from, to) {
+      const r = this.allRecords();
+      let n = 0;
+      Object.keys(r).forEach((pid) => {
+        if (r[pid] && r[pid][from] && !r[pid][to]) { r[pid][to] = r[pid][from]; delete r[pid][from]; n++; }
+      });
+      if (n) write("records", r);
+      return n;
+    },
     clearRecords(pid) {
       const r = this.allRecords();
       delete r[pid];

@@ -298,6 +298,8 @@
       : isAdmin
       ? `관리자에게는 검수 중이거나 줄 자료가 없는 ${u.w}도 보여요. 학생에게는 검수를 마친 ${u.w}만 보여요.`
       : hidden ? `곧 열릴 ${u.w} ${hidden}${u.n}이 준비 중이에요. 조금만 기다려 주세요!` : "";
+    $("#songGrid").classList.toggle("lesson-list", lessonCat);
+    if (lessonCat && items.length) { renderLessons(items, p); return; }
     if (!items.length) {
       $("#songGrid").innerHTML = isAdmin
         ? `<p class="empty-songs">이 분류에는 아직 영상이 없어요. ⚙ 관리 → ✎ 자막 준비실의 [➕ 영상 더하기]로 더할 수 있어요.</p>`
@@ -343,6 +345,68 @@
     }
     show("drill");
     TT.drill.open(item, p, { resume });
+  }
+
+  // ── 생활 영어(교재 단원) 목록: 맨 위 「이어서 할 단원」 + 책·장별로 묶은 단원 줄 ──
+  // 책이 여러 권이 되면 책마다 묶음이 생기고, 책 고르기 화면은 그때 따로 만듭니다(2026-11-27 결정).
+  function lessonOrder(a, b) {
+    const books = TT.books || [];
+    const bi = (it) => { const i = books.findIndex((x) => x.id === it.book); return i < 0 ? 99 : i; };
+    return bi(a) - bi(b) || (a.unit || 0) - (b.unit || 0);
+  }
+  function unitLabel(it) { return it.unit ? `UNIT ${it.unit}` : "단원"; }
+  function lessonShort(rec, total) {
+    if (rec && rec.current && rec.current.lineIndex > 0) return { text: `이어서 ${rec.current.lineIndex}/${rec.totalLines || total}`, cls: "go" };
+    if (rec && rec.completed && rec.last) return { text: `✓ ${rec.completions || 1}회 · ${rec.last.accuracy}%`, cls: "done" };
+    return { text: "처음", cls: "new" };
+  }
+  function renderLessons(items, p) {
+    const list = items.slice().sort(lessonOrder);
+    const recOf = (it) => store.record(p.id, it.videoId);
+    // 이어서 할 단원: 하다 만 단원(가장 최근) → 아직 완주 안 한 첫 단원 → 가장 오래전에 한 단원(복습)
+    const going = list.filter((it) => { const r = recOf(it); return r && r.current && r.current.lineIndex > 0; })
+      .sort((a, b) => String(recOf(b).lastDate || "").localeCompare(String(recOf(a).lastDate || "")));
+    const fresh = list.find((it) => { const r = recOf(it); return !(r && r.completed); });
+    const oldest = list.slice().sort((a, b) => String((recOf(a) || {}).lastDate || "").localeCompare(String((recOf(b) || {}).lastDate || "")))[0];
+    const next = going[0] || fresh || oldest;
+    const anyDone = list.some((it) => { const r = recOf(it); return r && r.completed; });
+    const why = going[0] ? "▶ 이어서 하기" : fresh ? (anyDone ? "▶ 다음 단원" : "▶ 여기서 시작") : "↻ 복습하기";
+    const st = songStatus(next, recOf(next), p.role === "admin");
+    let html = `
+      <button type="button" class="song-card lesson-next" data-vid="${esc(next.videoId)}">
+        <span class="thumb lesson-thumb"><b>${esc(next.lesson.pattern.en)}</b><small>${esc(next.lesson.bank[0].en)}</small></span>
+        <span class="song-body">
+          <span class="song-tags"><span class="tag">${why}</span><span class="tag soft">${esc(unitLabel(next))}</span></span>
+          <strong>${esc(next.title)}</strong>
+          <span class="artist">${esc(next.artist || "")}</span>
+          <span class="song-state ${st.cls}">${esc(st.text)}</span>
+        </span>
+      </button>`;
+    const books = (TT.books || []).concat([{ id: undefined, title: "그 밖의 단원", chapters: [{ no: undefined, title: "" }] }]);
+    books.forEach((bk) => {
+      const inBook = list.filter((it) => it.book === bk.id);
+      if (!inBook.length) return;
+      if ((TT.books || []).length > 1 || !bk.id) html += `<h2 class="lesson-book">📘 ${esc(bk.title)}</h2>`;
+      (bk.chapters || []).forEach((ch) => {
+        const units = inBook.filter((it) => it.chapter === ch.no);
+        if (!units.length) return;
+        const done = units.filter((it) => { const r = recOf(it); return r && r.completed; }).length;
+        const planned = ch.units ? ch.units[1] - ch.units[0] + 1 : units.length;
+        html += `<section class="lesson-chapter">
+          <h3>${ch.no ? `CHAPTER ${ch.no} · ` : ""}${esc(ch.title)}<small>완주 ${done} / ${units.length}단원${planned > units.length ? ` · 책 ${planned}단원 중 ${units.length}단원 준비됨` : ""}</small></h3>
+          <div class="unit-rows">` + units.map((it) => {
+            const r = recOf(it);
+            const total = lessonCounts(it.lesson).total;
+            const s = lessonShort(r, total);
+            return `<button type="button" class="unit-row${r && r.completed ? " is-done" : ""}" data-vid="${esc(it.videoId)}">
+              <span class="unit-no">${esc(unitLabel(it))}</span>
+              <span class="unit-main"><strong>${esc(it.title)}</strong><small>${esc(it.artist || "")}</small></span>
+              <span class="unit-state ${s.cls}">${esc(s.text)}</span>
+            </button>`;
+          }).join("") + `</div></section>`;
+      });
+    });
+    $("#songGrid").innerHTML = html;
   }
 
   async function startSong(vid, opts = {}) {
@@ -577,6 +641,7 @@
       `지금 이 기기의 사용자·기록·줄 자료를 백업 파일(${(obj.exportedAt || "").slice(0, 10)}) 내용으로 바꿀까요?`, "가져오기", true);
     if (!ok) return;
     store.importAll(obj);
+    migrateRecords();
     app.profile = null;
     app.adminUntil = 0;
     applyTheme(store.settings().theme);
@@ -621,7 +686,7 @@
     $("#adminBtn").addEventListener("click", openAdmin);
     $("#switchUserBtn").addEventListener("click", () => { app.profile = null; renderProfiles(); show("profiles"); });
     $("#songGrid").addEventListener("click", (e) => {
-      const b = e.target.closest(".song-card");
+      const b = e.target.closest(".song-card, .unit-row");
       if (b) startSong(b.dataset.vid);
     });
     $("#catGrid").addEventListener("click", (e) => {
@@ -827,7 +892,12 @@
     }
   }
 
+  // 기록 열쇠가 바뀐 것들을 옮깁니다(앱을 열 때·백업을 가져온 뒤).
+  const RENAMED = [["lesson-u01", "bm-u03"]]; // 생활 영어 옛 1단원 → 책 UNIT 3 (2026-11-27)
+  function migrateRecords() { RENAMED.forEach(([a, b]) => store.renameRecordKey(a, b)); }
+
   function init() {
+    migrateRecords();
     applyTheme(store.settings().theme);
     bind();
     bindCloud();

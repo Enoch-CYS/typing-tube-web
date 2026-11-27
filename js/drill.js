@@ -61,7 +61,7 @@
   }
 
   // ── 낱말 조각 ──
-  const norm = (w) => String(w || "").toLowerCase().replace(/[‘’]/g, "'").replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
+  const norm = (w) => String(w || "").toLowerCase().replace(/[‘’]/g, "'").replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""); // 끝 따옴표(dollars')는 없이 쳐도 됨
   // 대답 문장을 조각으로 나눕니다. 문장부호는 떼고, 문장 첫머리 낱말은 소문자로
   // (대문자가 정답 순서를 알려 주지 않게. I와 문장 중간의 고유명사 Monday 등은 그대로).
   function tilesOf(sentence) {

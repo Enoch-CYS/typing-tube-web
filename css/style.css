@@ -588,7 +588,12 @@ body[data-view="drill"] main { padding-top: 12px; padding-bottom: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .tile.glow { animation: none; } }
 /* 시작 전에는 문장 카드를 가리고, 시작한 뒤에는 막을 걷어 카드를 누르면 다시 들을 수 있게 */
-.lesson-frame:has(.video-shield:not(.started)) .lesson-card { visibility: hidden; }
+/* 시작 전: 문장 카드를 빼고, 시작 안내가 글 길이만큼 늘어나 가운데에 다 보이게 */
+.lesson-frame:has(.video-shield:not(.started)) .lesson-card { display: none; }
+.lesson-frame .video-shield:not(.started) { position: relative; padding: 22px 12px; min-height: 230px; }
+.lesson-start .row { gap: 10px; margin-top: 4px; }
+#qIntro { background: rgba(255, 255, 255, 0.92); color: #25304a; border-color: transparent; }
+#qIntro.is-playing { box-shadow: 0 0 0 3px var(--cursor); }
 .lesson-frame .video-shield.started { pointer-events: none; }
 
 /* ── 생활 영어 단원 목록: 이어서 할 단원 + 장별 단원 줄 ── */

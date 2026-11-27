@@ -12,7 +12,10 @@
   const speech = { ok: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window, voices: [] };
   function loadVoices() {
     if (!speech.ok) return;
-    speech.voices = speechSynthesis.getVoices().filter((v) => /^en([-_]|$)/i.test(v.lang));
+    const all = speechSynthesis.getVoices();
+    speech.voices = all.filter((v) => /^en([-_]|$)/i.test(v.lang));
+    speech.ko = all.filter((v) => /^ko([-_]|$)/i.test(v.lang))
+      .sort((a, b) => (/natural|online|neural|google/i.test(b.name) ? 1 : 0) - (/natural|online|neural|google/i.test(a.name) ? 1 : 0))[0] || null;
   }
   if (speech.ok) {
     loadVoices();
@@ -39,8 +42,8 @@
     setTimeout(() => {
       if (D !== my || !D) return;
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US";
-      const v = pickVoice(opts.second);
+      u.lang = opts.ko ? "ko-KR" : "en-US";
+      const v = opts.ko ? speech.ko : pickVoice(opts.second);
       if (v) u.voice = v;
       u.rate = D.rate;
       // 낱말 읽기(quiet)는 짧아서 「읽어 주는 중」 표시를 바꾸지 않습니다.
@@ -52,7 +55,7 @@
       speechSynthesis.speak(u);
       // 끝났다는 신호를 주지 않는 기기도 있어, 넉넉한 예상 시간이 지나면 「읽어 주는 중」을 풉니다.
       clearTimeout(D.sayTimer);
-      D.sayTimer = setTimeout(end, 1500 + (text.length * 65) / D.rate);
+      D.sayTimer = setTimeout(end, 1500 + (text.length * (opts.ko ? 160 : 65)) / D.rate);
     }, 60);
   }
   function hush() {
@@ -143,17 +146,59 @@
     const nQ = picks.q.length;
     $("#qStartNote").textContent = cur
       ? `${D.idx + 1}번째 문제부터 이어서 해요.`
-      : `문장 ${(lesson.bank || []).length}개 중 오늘은 ${nF}개! ① 따라 치기 ${nF}문장 → ② 문답 ${nQ}개. 할 때마다 문장이 바뀌어요 🔊`;
+      : `문장 ${(lesson.bank || []).length}개 중 오늘은 ${nF}개! ① 따라 치기 ${nF}문장 → ② 문답 ${nQ}개. 할 때마다 문장이 바뀌어요.`;
     $("#qShield").classList.remove("started");
     $("#qStartCard").hidden = false;
     $("#qStart").disabled = false;
     hint(speech.ok ? "" : "이 기기는 읽어 주기를 할 수 없어요. 글자를 보고 따라 쳐요.", speech.ok ? "" : "warn");
     setItem(D.idx, { silent: true });
+    $("#qIntro").hidden = !speech.ok;
+    stopIntro();
     setTimeout(() => { if (D) $("#qStart").focus(); }, 50);
+    // 처음부터 할 때만 단원 설명을 저절로 읽어 줍니다(이어서 할 때는 [🔊 설명 듣기]로).
+    if (!cur) setTimeout(() => { if (D && !D.started) playIntro(); }, 400);
   }
+
+  // ── 단원 설명 읽기: 단원을 열면 저절로 읽고, [🔊 설명 듣기]로 다시 들어요. [▶ 시작]을 누르면 멈추고 바로 시작합니다.
+  // 한국어 설명은 한국어 목소리(기기에 있을 때만), 영어 표현·예문은 영어 목소리.
+  function introParts() {
+    const L = D.lesson;
+    const en = String(L.pattern.en || "").replace(/\s*\/\s*/g, ", ").replace(/[+~]/g, " ").replace(/[가-힣()]+/g, " ").replace(/\s+/g, " ").trim();
+    const ko = String(L.pattern.ko || "").replace(/[「」]/g, "").replace(/\([^)]*\)/g, "").replace(/—/g, ",");
+    const parts = [];
+    if (speech.ko) parts.push({ ko: true, text: `오늘 배울 표현이에요.` });
+    if (en) parts.push({ text: en });
+    if (speech.ko) parts.push({ ko: true, text: ko });
+    parts.push({ text: (L.bank && L.bank[0] && L.bank[0].en) || "" });
+    if (speech.ko) parts.push({ ko: true, text: "준비가 되면 시작을 눌러 주세요." });
+    return parts.filter((p) => p.text);
+  }
+  function playIntro() {
+    if (!D || D.started || !speech.ok) return;
+    loadVoices();
+    const parts = introParts();
+    const token = (D.introToken = (D.introToken || 0) + 1);
+    $("#qIntro").classList.add("is-playing");
+    $("#qIntro").textContent = "⏹ 설명 멈추기";
+    const next = (i) => {
+      if (!D || D.started || D.introToken !== token) return;
+      if (i >= parts.length) { stopIntro(); return; }
+      say(parts[i].text, { ko: parts[i].ko, onDone: () => setTimeout(() => next(i + 1), 250) });
+    };
+    next(0);
+  }
+  function stopIntro() {
+    if (!D) return;
+    D.introToken = (D.introToken || 0) + 1;
+    if (!D.started) hush();
+    $("#qIntro").classList.remove("is-playing");
+    $("#qIntro").textContent = "🔊 설명 듣기";
+  }
+  function toggleIntro() { if (!D) return; if ($("#qIntro").classList.contains("is-playing")) stopIntro(); else playIntro(); }
 
   function start() {
     if (!D || D.started) return;
+    stopIntro();
     D.started = true;
     $("#qShield").classList.add("started");
     $("#qStartCard").hidden = true;
@@ -754,6 +799,7 @@
     });
     $("#qCard").addEventListener("click", () => { if (D && D.started) { speakCurrent(); focusInput(); } });
     $("#qStart").addEventListener("click", start);
+    $("#qIntro").addEventListener("click", toggleIntro);
     $("#qSay").addEventListener("click", () => { speakCurrent(); focusInput(); });
     $("#qAnswer").addEventListener("click", sayAnswer);
     $("#qMode").addEventListener("click", toggleMode);

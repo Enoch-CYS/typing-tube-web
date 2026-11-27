@@ -113,10 +113,13 @@
     return out;
   }
 
-  // 영상 고르기 목록의 이름: 🚫 뺀 곡 / ✅ 검수 완료 / ✎ 검수 중
+  // 세는 말: 노래는 「곡」, 영화·강의(kind talk)는 「영상」
+  const unitWord = (vid) => (TT.songs.kindOf(vid) === "talk" ? "영상" : "곡");
+
+  // 영상 고르기 목록의 이름: 🚫 뺀 곡(영상) / ✅ 검수 완료 / ✎ 검수 중
   function songLabel(c) {
     const s = TT.store.song(c.videoId);
-    const mark = TT.songs.isHidden(c.videoId) ? " 🚫 뺀 곡" : s ? (s.reviewed ? " ✅" : " ✎") : "";
+    const mark = TT.songs.isHidden(c.videoId) ? ` 🚫 뺀 ${unitWord(c.videoId)}` : s ? (s.reviewed ? " ✅" : " ✎") : "";
     return `${c.title} — ${c.artist || ""}${mark}`;
   }
   function refreshSongLabel() {
@@ -129,8 +132,9 @@
   async function toggleSongHidden() {
     const meta = TT.songs.meta(M.vid) || {};
     const wasOut = TT.songs.isHidden(M.vid);
+    const w = unitWord(M.vid);
     if (!wasOut) {
-      const ok = await confirmBox("이 곡을 연습 목록에서 뺄까요?",
+      const ok = await confirmBox(`이 ${w}을 연습 목록에서 뺄까요?`,
         `「${meta.title}」은(는) 아들·학생 목록에서 사라지고, 관리자 목록에는 맨 아래에 흐리게 남아요. 검수한 줄 자료는 그대로 두니, 여기서 ↩ 되살리기를 누르면 언제든 다시 나와요.`, "빼기");
       if (!ok) return;
     }
@@ -138,7 +142,7 @@
     TT.cloud.hiddenChanged();
     refreshSongLabel();
     renderState();
-    toast(wasOut ? "되살렸어요. 다시 연습 목록에 나와요." : "곡을 뺐어요. 학생 목록에 나오지 않아요.");
+    toast(wasOut ? "되살렸어요. 다시 연습 목록에 나와요." : `${w}을 뺐어요. 학생 목록에 나오지 않아요.`);
   }
 
   // ── ➕ 영상 더하기: 유튜브 주소·제목·분류·난이도만(가사 없음) ──
@@ -293,11 +297,13 @@
       : "아직 저장된 줄 자료가 없어요.";
     if (M.source && M.source.kind === "lrclib") s += ` · 가사 출처: LRCLIB${M.source.album ? ` (${M.source.album})` : ""}`;
     const out = TT.songs.isHidden(M.vid);
-    if (out) s = "🚫 연습 목록에서 뺀 곡이에요 — 아들·학생에게 보이지 않아요. " + s.replace("✅ 검수 완료 — 아들·학생 목록에 공개 중", "✅ 검수 완료");
+    const w = unitWord(M.vid);
+    if (out) s = `🚫 연습 목록에서 뺀 ${w}이에요` + " — 아들·학생에게 보이지 않아요. " + s.replace("✅ 검수 완료 — 아들·학생 목록에 공개 중", "✅ 검수 완료");
     if (TT.cloud.isAdmin()) s += " · ☁ 곡 창고에 자동으로 올라가요";
     else if (TT.cloud.enabled()) s += " · 이 기기에만 저장(곡 창고에 관리자 열쇠로 연결하면 함께 올라가요)";
     $("#mSongState").textContent = s;
-    $("#mHideSong").textContent = out ? "↩ 이 곡 되살리기" : "🚫 이 곡 빼기";
+    $("#mHideSong").textContent = out ? `↩ 이 ${w} 되살리기` : `🚫 이 ${w} 빼기`;
+    $("#mHideSong").title = `${w}을 통째로 연습 목록에서 빼거나 되살려요(줄 자료는 그대로)`;
     $("#mHideSong").classList.toggle("is-out", out);
     renderReviewCount();
   }

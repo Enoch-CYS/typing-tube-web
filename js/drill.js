@@ -86,13 +86,31 @@
   }
 
   // ── 문제은행에서 고르기 ──
-  // 따라 치기: 은행에서 pick.follow개를 무작위로 골라 은행 순서(쉬운 것 → 긴 것)대로.
+  // 따라 치기: 안 해 본 문장 → 가장 오래전에 한 문장 순으로 pick.follow개(rec.seen[문장] = 몇 번째 완주 때 했는지).
+  // 문장에 난이도(lv 1 쉬움 · 2 보통 · 3 어려움)가 있으면 완주 횟수에 따라 단계를 올립니다(2026-11-27 결정).
+  //   1회 쉬움3+보통3 → 2회 쉬움3+보통2+어려움1 → 3회 2+2+2 → 4회부터 보통2+어려움4. 모자란 몫은 어려운 쪽부터 채움.
   // 문답: 그날 따라 친 문장 가운데 pick.qa개를 골라 순서를 섞음(대답 = 몇 분 전에 익힌 문장).
-  function choosePicks(lesson) {
+  const STEPS = [[3, 3, 0], [3, 2, 1], [2, 2, 2], [0, 2, 4]];
+  function choosePicks(lesson, rec) {
     const bank = lesson.bank || [];
     const pick = lesson.pick || {};
     const nF = Math.min(pick.follow || 6, bank.length);
-    const f = shuffle(bank.map((_, i) => i)).slice(0, nF).sort((a, b) => a - b);
+    const seen = (rec && rec.seen) || {};
+    const age = (i) => seen[bank[i].en] || 0; // 0 = 아직 안 해 본 문장
+    const byAge = (list) => shuffle(list).sort((a, b) => age(a) - age(b)); // 같은 차례끼리는 무작위
+    const all = bank.map((_, i) => i);
+    let f;
+    if (bank.some((b) => b.lv)) {
+      const step = STEPS[Math.min((rec && rec.completions) || 0, STEPS.length - 1)];
+      const pools = [1, 2, 3].map((lv) => byAge(all.filter((i) => (bank[i].lv || 2) === lv)));
+      f = [];
+      step.forEach((n, k) => f.push(...pools[k].splice(0, n)));
+      const rest = pools[2].concat(pools[1], pools[0]);
+      while (f.length < nF && rest.length) f.push(rest.shift());
+      f = f.slice(0, nF).sort((a, b) => (bank[a].lv || 2) - (bank[b].lv || 2) || a - b); // 쉬운 문장부터
+    } else {
+      f = byAge(all).slice(0, nF).sort((a, b) => a - b);
+    }
     const withQa = f.filter((i) => bank[i].qa);
     const q = shuffle(withQa).slice(0, Math.min(pick.qa || 4, withQa.length));
     return { f, q };
@@ -123,7 +141,7 @@
     const rec = TT.store.record(profile.id, item.videoId);
     // 이어서 할 때는 지난번에 고른 문장 그대로, 새로 할 때는 문제은행에서 새로 고릅니다.
     let cur = opts.resume && rec && rec.current && validPicks(lesson, rec.current.picks) ? rec.current : null;
-    const picks = cur ? cur.picks : choosePicks(lesson);
+    const picks = cur ? cur.picks : choosePicks(lesson, rec);
     const items = itemsOf(lesson, picks);
     if (cur && cur.lineIndex >= items.length) cur = null;
     D = {
@@ -463,7 +481,12 @@
     const rec = TT.store.record(D.profile.id, vid) || {};
     const prev = rec.last || null;
     const best = rec.best || { accuracy: 0, wpm: 0 };
+    // 오늘 친 문장에 「몇 번째 완주」 표시 → 다음에는 안 해 본 문장부터 나옵니다.
+    const seen = Object.assign({}, rec.seen);
+    const tick = (rec.completions || 0) + 1;
+    D.picks.f.forEach((i) => { const b = D.lesson.bank[i]; if (b) seen[b.en] = tick; });
     TT.store.saveRecord(D.profile.id, vid, Object.assign({}, rec, {
+      seen,
       totalLines: D.items.length,
       linesDone: D.items.length,
       completed: true,

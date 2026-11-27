@@ -6,7 +6,7 @@ window.TT = window.TT || {};
 TT.categories = [
   { id: "pop", name: "팝송", icon: "🎵", kind: "song" },
   { id: "ccm", name: "CCM", icon: "🙏", kind: "song" },
-  { id: "talk", name: "생활 영어", icon: "💬", kind: "lesson" },
+  { id: "talk", name: "빨모샘의 라이브 영어회화", icon: "💬", kind: "lesson" },
   { id: "movie", name: "영화 명장면", icon: "🎬", kind: "talk" },
   { id: "ted", name: "TED 강의", icon: "🎤", kind: "talk" }
 ];
